@@ -1161,6 +1161,11 @@ func (b *schnorrVerify) Run(input []byte) ([]byte, error) {
 		signature [64]byte
 		output    [1]byte
 	)
+
+	if len(input) < schnorrInputMinLength {
+		return nil, errSchnorrInvalidInputLength
+	}
+
 	copy(publicKey[:], input[:33])
 	copy(signature[:], input[33:33+64])
 	message := input[33+64:]
