@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/hbakhtiyor/schnorr"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -67,15 +68,16 @@ var PrecompiledContractsByzantium = map[common.Address]PrecompiledContract{
 // PrecompiledContractsIstanbul contains the default set of pre-compiled Ethereum
 // contracts used in the Istanbul release.
 var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
-	common.BytesToAddress([]byte{1}): &ecrecover{},
-	common.BytesToAddress([]byte{2}): &sha256hash{},
-	common.BytesToAddress([]byte{3}): &ripemd160hash{},
-	common.BytesToAddress([]byte{4}): &dataCopy{},
-	common.BytesToAddress([]byte{5}): &bigModExp{eip2565: false},
-	common.BytesToAddress([]byte{6}): &bn256AddIstanbul{},
-	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
-	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
-	common.BytesToAddress([]byte{9}): &blake2F{},
+	common.BytesToAddress([]byte{1}):  &ecrecover{},
+	common.BytesToAddress([]byte{2}):  &sha256hash{},
+	common.BytesToAddress([]byte{3}):  &ripemd160hash{},
+	common.BytesToAddress([]byte{4}):  &dataCopy{},
+	common.BytesToAddress([]byte{5}):  &bigModExp{eip2565: false},
+	common.BytesToAddress([]byte{6}):  &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}):  &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}):  &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}):  &blake2F{},
+	common.BytesToAddress([]byte{10}): &schnorrVerify{},
 }
 
 // PrecompiledContractsBerlin contains the default set of pre-compiled Ethereum
@@ -1134,4 +1136,43 @@ func kZGToVersionedHash(kzg kzg4844.Commitment) common.Hash {
 	h[0] = blobCommitmentVersionKZG
 
 	return h
+}
+
+type schnorrVerify struct{}
+
+var (
+	errSchnorrInvalidInputLength = errors.New("invalid input length")
+	errSchnorrVerifyError        = errors.New("error occoured during schnorr verify")
+)
+
+const (
+	schnorrInputMinLength = 33 + 64 // 33 bytes public key, 64 bytes signature
+)
+
+func (v *schnorrVerify) RequiredGas(input []byte) uint64 {
+	return uint64(len(input)+31)/32*params.SchnorrPerWordGas + params.SchnorrBaseGas
+}
+
+// Run executes the point evaluation precompile.
+func (b *schnorrVerify) Run(input []byte) ([]byte, error) {
+
+	var (
+		publicKey [33]byte
+		signature [64]byte
+		output    [1]byte
+	)
+	copy(publicKey[:], input[:33])
+	copy(signature[:], input[33:33+64])
+	message := input[33+64:]
+	message_hash := sha256.Sum256(message)
+	result, err := schnorr.Verify(publicKey, message_hash, signature)
+	if err != nil {
+		return nil, errSchnorrVerifyError
+	}
+
+	output[0] = 0
+	if result {
+		output[0] = 1
+	}
+	return output[:], nil
 }
